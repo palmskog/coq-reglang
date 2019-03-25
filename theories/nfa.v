@@ -39,7 +39,7 @@ Record enfa : Type := {
   enfa_trans : option char -> enfa_state -> enfa_state -> bool }.
 
 Section EpsilonNFA.
-  Variables (N : enfa).
+  Variable (N : enfa).
 
   (** For eNFAs, acceptance is defined relationally since structural
   recursion over the word is no longer possible. *)
@@ -54,16 +54,19 @@ Section EpsilonNFA.
   (** We convert eNFAs to NFAs by extending the set of starting states and all
   transitions by epsipon-reachable states - also known as epsilon closure *)
 
-  Definition eps_reach (p : N) := [set q | connect (enfa_trans None) p q].
+  Definition eps_reach (p : N) := dfs (rgraph (enfa_trans None)) #|N| [::] p.
+
+  Lemma eps_reach_connect x : eps_reach x =i connect (enfa_trans None) x.
+  Proof. by move => y; apply/idP/idP. Qed.
 
   Lemma lift_accept p q x : q \in eps_reach p -> enfa_accept q x -> enfa_accept p x.
   Proof.
-    rewrite inE => /connectP [s]. elim: s p x q => //= [p x q _ -> //| q s IHs p x q'].
+    rewrite eps_reach_connect => /connectP [s]. elim: s p x q => //= [p x q _ -> //| q s IHs p x q'].
     case/andP => pq ? ? H. apply: EnfaNone pq _. exact: IHs H.
   Qed.
 
   Definition nfa_of :=
-    {| nfa_s := \bigcup_(p in enfa_s N) (eps_reach p);
+    {| nfa_s := \bigcup_(p in enfa_s N) [set x in eps_reach p];
        nfa_fin := enfa_f N;
        nfa_trans p a q := [exists p', enfa_trans (Some a) p p' && (q \in eps_reach p') ] |}.
 
@@ -71,10 +74,10 @@ Section EpsilonNFA.
     (enfa_accept p x) <-> (exists2 q : nfa_of, q \in eps_reach p & nfa_accept q x).
   Proof. split.
     - elim => {p x} [q H|p a q x H _ [q' Hq1 Hq2]|p p' x].
-      + exists q => //. by rewrite inE connect0.
-      + exists p => /=; first by rewrite inE connect0.
+      + exists q => //. by rewrite eps_reach_connect inE connect0.
+      + exists p => /=; first by rewrite eps_reach_connect inE connect0.
         apply/exists_inP. exists q' => //. apply/exists_inP. by exists q.
-      + move => H1 H2 [q Hq1 Hq2]. exists q => //. rewrite !inE in Hq1 *.
+      + move => H1 H2 [q Hq1 Hq2]. exists q => //. rewrite eps_reach_connect !inE in Hq1 *.
         exact: connect_trans (connect1 _) Hq1.
     - elim: x p => [|a x IH] p [p'] R /= H. apply: lift_accept R _. exact: EnfaFin.
       case/exists_inP : H => q /exists_inP [q' pq' qq'] H. apply: lift_accept R _.
@@ -84,8 +87,8 @@ Section EpsilonNFA.
   Lemma nfa_ofP x : reflect (enfa_lang x) (x \in nfa_lang nfa_of).
   Proof.
     apply: (iffP exists_inP) => [[p Hp1 Hp2]|[s Hs1 /enfaE [p Hp1 Hp2]]].
-    - case/bigcupP : Hp1 => s Hs H. exists s => //. by apply/enfaE; exists p.
-    - exists p => //. by apply/bigcupP; exists s.
+    - case/bigcupP : Hp1 => s Hs. rewrite inE => H. exists s => //. by apply/enfaE; exists p.
+    - exists p => //. apply/bigcupP; exists s => //. by rewrite inE.
   Qed.
 End EpsilonNFA.
 
